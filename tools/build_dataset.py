@@ -2,7 +2,7 @@
 """Сборка словаря: ручное ядро + Викисловарь hy-ru, с категориями, уровнями и транскрипцией."""
 import json, re, glob, os, sys, collections, hashlib
 
-BASE = os.path.expanduser('~/Library/Application Support/hayeren')
+BASE = os.path.expanduser('~/Developer/apps/hayeren')
 WIKT = '/private/tmp/claude-501/-Users-daniilnikora/80cc56f5-30da-481e-a405-1437dcadb45d/scratchpad/hy.jsonl'
 FREQ_FILES = ['/private/tmp/claude-501/-Users-daniilnikora/80cc56f5-30da-481e-a405-1437dcadb45d/scratchpad/hye_wikipedia_2021_300K/hye_wikipedia_2021_300K-words.txt',
               '/private/tmp/claude-501/-Users-daniilnikora/80cc56f5-30da-481e-a405-1437dcadb45d/scratchpad/hye_newscrawl_2011_100K/hye_newscrawl_2011_100K-words.txt']
@@ -371,7 +371,10 @@ for i, ka in enumerate(order):
     # q=1 — живое слово для тренировок; q=0 — редкий синоним, остаётся только в словаре
     q = 1 if (e['src'] == 'core' or e['f'] > 0) else 0
     words.append({'id': hashlib.sha1(ka.encode('utf-8')).hexdigest()[:10], 'ka': e['ka'], 'tr': e['tr'], 'ru': e['ru'],
-                  'cats': e['cats'] or ['general'], 'lvl': e['lvl'],
+                  # одна тема на слово — первая, то есть ручная, если она есть: тогда
+                  # суммы по темам сходятся с размером словаря и статистика тем ничего не
+                  # считает дважды
+                  'cats': (e['cats'] or ['general'])[:1], 'lvl': e['lvl'],
                   'f': e['f'], 'src': e['src'], 'pos': e.get('pos', ''), 'q': q})
 
 trainable = sum(w['q'] for w in words)
