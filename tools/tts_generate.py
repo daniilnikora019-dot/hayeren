@@ -12,7 +12,7 @@
 import hashlib, json, os, subprocess, sys, wave
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL = os.path.expanduser('~/Library/Application Support/hayeren/tools/hy_AM-gor-medium.onnx')
+MODEL = os.path.expanduser('~/Developer/apps/hayeren/tools/hy_AM-gor-medium.onnx')
 PIPER = os.path.expanduser('~/venvs/piper/bin/python')
 OUT = os.path.join(BASE, 'audio/f')
 INDEX = os.path.join(BASE, 'data/audio_index.json')
