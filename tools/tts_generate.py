@@ -33,7 +33,7 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     idx = {} if '--all' in sys.argv else (
         json.load(open(INDEX, encoding='utf-8')) if os.path.exists(INDEX) else {})
-    todo = [t for t in texts if key(t) not in idx or
+    todo = [t for t in texts if t not in idx or
             not os.path.exists(os.path.join(OUT, key(t) + '.mp3'))]
     print(f'слов всего: {len(texts)} · озвучить: {len(todo)}')
     if not todo:
