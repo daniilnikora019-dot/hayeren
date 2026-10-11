@@ -8,7 +8,11 @@
 import json, glob, os, sys, re
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRATCH = '/private/tmp/claude-501/-Users-daniilnikora/80cc56f5-30da-481e-a405-1437dcadb45d/scratchpad'
+# Исходники (выгрузки Викисловаря, частотные списки Leipzig) — в sources/
+# рядом с проектом, не в /tmp: macOS чистит /tmp от файлов старше 3 дней,
+# и пересборка словаря молча становилась невозможной (11.10.2026).
+SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sources') + '/'
+SCRATCH = SRC
 WIKT = f'{SCRATCH}/hy.jsonl'
 FREQ = [f'{SCRATCH}/hye_wikipedia_2021_300K/hye_wikipedia_2021_300K-words.txt',
         f'{SCRATCH}/hye_newscrawl_2011_100K/hye_newscrawl_2011_100K-words.txt']

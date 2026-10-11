@@ -3,9 +3,13 @@
 import json, re, glob, os, sys, collections, hashlib
 
 BASE = os.path.expanduser('~/Developer/apps/hayeren')
-WIKT = '/private/tmp/claude-501/-Users-daniilnikora/80cc56f5-30da-481e-a405-1437dcadb45d/scratchpad/hy.jsonl'
-FREQ_FILES = ['/private/tmp/claude-501/-Users-daniilnikora/80cc56f5-30da-481e-a405-1437dcadb45d/scratchpad/hye_wikipedia_2021_300K/hye_wikipedia_2021_300K-words.txt',
-              '/private/tmp/claude-501/-Users-daniilnikora/80cc56f5-30da-481e-a405-1437dcadb45d/scratchpad/hye_newscrawl_2011_100K/hye_newscrawl_2011_100K-words.txt']
+# Исходники (выгрузки Викисловаря, частотные списки Leipzig) — в sources/
+# рядом с проектом, не в /tmp: macOS чистит /tmp от файлов старше 3 дней,
+# и пересборка словаря молча становилась невозможной (11.10.2026).
+SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sources') + '/'
+WIKT = SRC + 'hy.jsonl'
+FREQ_FILES = [SRC + 'hye_wikipedia_2021_300K/hye_wikipedia_2021_300K-words.txt',
+              SRC + 'hye_newscrawl_2011_100K/hye_newscrawl_2011_100K-words.txt']
 
 sys.path.insert(0, os.path.join(BASE, 'tools'))
 from translit_hy import translit as transcribe
