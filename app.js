@@ -2956,6 +2956,8 @@ ROUTES.settings = function () {
     </div>
     <div id="s-check-slot"></div>
 
+    ${NOTIFY && pushState().allowed ? pushSection(row, sw) : ''}
+
     <div class="set-sect">Резервная копия</div>
     <p class="set-note">Прогресс хранится только на этом устройстве. Если удалить значок с экрана
       «Домой», iOS сотрёт его вместе с приложением — поэтому время от времени сохраняйте копию.</p>
@@ -3024,6 +3026,7 @@ ROUTES.settings = function () {
     out.textContent = lines.join('\n');
     $('#s-check-slot', bg).appendChild(out);
   };
+  if ($('#s-push', bg)) bindPushSettings(bg);
   $('#s-sync', bg).onclick = async () => {
     const st = $('#s-sync-st', bg);
     st.textContent = 'сохраняю…';
@@ -3232,6 +3235,121 @@ function syncStatusText() {
   const h = Math.floor(m / 60);
   if (h < 24) return `сохранена ${plural(h, 'час', 'часа', 'часов')} назад`;
   return `сохранена ${new Date(st.at).toLocaleDateString('ru-RU')}`;
+}
+
+/* ---------------- напоминания ----------------
+   Push на телефон, если дневная норма новых слов ещё не взята. Работает только
+   у приложения с экрана «Домой» (iOS 16.4+). Включается ключом notify в
+   config.js — без него раздела нет совсем, — а дальше сервер решает, кому
+   можно: проверка push_allowed. Шлёт сервер (функция по расписанию раз в
+   10 минут); он же читает копию прогресса и выбирает текст. Здесь —
+   только подписка устройства и её настройки. */
+const NOTIFY = L.notify;
+const PUSH_KEY = `${L.key}_push_v1`;
+
+function pushState() {
+  try { return JSON.parse(localStorage.getItem(PUSH_KEY)) || {}; } catch (e) { return {}; }
+}
+function setPushState(patch) {
+  const st = Object.assign(pushState(), patch);
+  try { localStorage.setItem(PUSH_KEY, JSON.stringify(st)); } catch (e) {}
+  return st;
+}
+function pushSupported() {
+  return !!(navigator.serviceWorker && window.PushManager && window.Notification);
+}
+const pushTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+async function pushApi(path, method, body, prefer) {
+  if (SYNC_OFF) throw new Error('локальная проверка');   // как и копия: не заводить пустых аккаунтов
+  const token = await syncToken();
+  const r = await fetch(`${SYNC.url}${path}`, {
+    method,
+    headers: {
+      apikey: SYNC.key, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json',
+      ...(prefer ? { Prefer: prefer } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r;
+}
+
+function b64uBytes(s) {
+  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4));
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+/* подписать устройство (или освежить подписку) и записать её на сервер */
+async function pushSubscribe() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription() ||
+    await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(NOTIFY.vapid) });
+  const j = sub.toJSON();
+  await pushApi('/rest/v1/push_subs?on_conflict=user_id,app', 'POST', {
+    app: L.key, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
+    enabled: true, tz: pushTz(),
+    updated_at: new Date().toISOString(),
+  }, 'resolution=merge-duplicates,return=minimal');
+}
+const pushPatch = (patch) => pushApi(`/rest/v1/push_subs?app=eq.${L.key}`, 'PATCH',
+  { ...patch, updated_at: new Date().toISOString() }, 'return=minimal');
+
+/* При запуске: узнать, разрешены ли напоминания этому аккаунту, и освежить
+   подписку — iOS иногда меняет её адрес, а часовой пояс мог смениться. */
+async function bindPush() {
+  if (!NOTIFY || SYNC_OFF || !navigator.onLine || !syncState().refresh) return;
+  try {
+    const r = await pushApi('/rest/v1/rpc/push_allowed', 'POST', { p_app: L.key });
+    const allowed = (await r.json()) === true, was = pushState().allowed;
+    setPushState({ allowed });
+    // ответ приходит через секунду-другую после запуска: если настройки уже
+    // открыты, раздел должен появиться сразу, а не при следующем заходе
+    if (allowed !== was && S.route === 'settings') render();
+    if (pushState().allowed && pushState().on && pushSupported() && Notification.permission === 'granted') {
+      await pushSubscribe();
+    }
+  } catch (e) { /* без сети — в следующий раз */ }
+}
+
+/* раздел «Напоминания» в настройках: только включить или выключить. Когда
+   слать, решает сервер (вечером, если норма не взята); row и sw — строители
+   строк из настроек. Строка под разделом пуста и появляется только при ошибке. */
+function pushSection(row, sw) {
+  return `<div class="set-sect">Напоминания</div>
+    <div class="set-group">
+      ${row('Присылать уведомления', '',
+        `<span id="s-push">${sw(pushState().on && pushSupported())}</span>`)}
+    </div>
+    <p class="set-note" id="s-push-note" style="margin-top:8px" hidden></p>`;
+}
+
+function bindPushSettings(bg) {
+  const swEl = $('#s-push', bg), noteEl = $('#s-push-note', bg);
+  const say = (msg) => { noteEl.textContent = msg || ''; noteEl.hidden = !msg; };
+  let busy = false;
+  swEl.onclick = async () => {
+    if (busy) return;
+    if (!pushSupported()) { say('Уведомления работают только в приложении, открытом со значка на экране «Домой».'); return; }
+    busy = true; say();
+    try {
+      if (!pushState().on) {
+        // разрешение — первым делом: iOS спрашивает его только прямо из нажатия
+        if (await Notification.requestPermission() !== 'granted') {
+          say('Уведомления запрещены. Разрешить: Настройки iPhone → Уведомления → значок приложения.');
+          return;
+        }
+        await pushSubscribe();
+        setPushState({ on: true });
+      } else {
+        await pushPatch({ enabled: false });
+        setPushState({ on: false });
+      }
+      swEl.firstElementChild.classList.toggle('on', pushState().on);
+    } catch (e) {
+      say('Не получилось: нет связи с сервером. Попробуйте ещё раз.');
+    } finally { busy = false; }
+  };
 }
 
 /* ---------------- резервная копия прогресса ----------------
@@ -3597,6 +3715,7 @@ async function boot() {
   bindStatusBarTap();
   bindDataUpdates();
   bindSync();
+  bindPush();
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input,select,textarea')) return;
     if (S.alphaQuiz && S.alphaKeys) S.alphaKeys(e);
